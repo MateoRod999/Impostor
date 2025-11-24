@@ -23,7 +23,13 @@ public class GameSession {
 
     // Mapa de Votos: ID_Votante -> ID_Sospechoso
     private Map<Long, Long> votosActuales = new HashMap<>();
+    public void setEnJuego(boolean enJuego) {
+        this.enJuego = enJuego;
+    }
 
+    public Long getImpostorId() {
+        return this.impostorId;
+    }
     // Métodos para manejar votos
     public void limpiarVotos() {
         votosActuales.clear();

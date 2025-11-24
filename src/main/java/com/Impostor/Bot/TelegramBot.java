@@ -234,45 +234,38 @@ public class TelegramBot extends TelegramLongPollingBot {
                 }
             }
             if (callData.startsWith("VOTE:")) {
-                // Formato: VOTE:IdSospechoso:IdAdmin
                 String[] parts = callData.split(":");
                 Long sospechosoId = Long.parseLong(parts[1]);
-                Long adminId = Long.parseLong(parts[2]); // Necesitamos saber quién es el admin de la partida
-                Long votanteId = chatId; // Quien hizo click
+                Long adminId = Long.parseLong(parts[2]);
+                Long votanteId = chatId;
 
                 // Registramos el voto
                 String estado = gameService.registrarVoto(adminId, votanteId, sospechosoId);
 
                 if (estado.equals("COMPLETO")) {
-                    // 1. Borrar mensaje de votación al usuario
+                    // 1. Borramos el mensaje de botones al último que votó
                     DeleteMessage delete = new DeleteMessage(chatId.toString(), messageId);
                     try { execute(delete); } catch (Exception e) {}
-                    sendMsg(chatId, "✅ Votación cerrada.");
 
-                    // 2. CALCULAR RESULTADO FINAL
-                    String resultadoFinal = gameService.calcularResultadoVotacion(adminId);
+                    // 2. Calculamos resultado
+                    String resultado = gameService.calcularResultadoVotacion(adminId);
 
-                    // 3. Anunciar en el grupo del Admin (o a todos)
-                    sendMsg(adminId, "🗳️ **RESULTADOS DE LA VOTACIÓN:**\n\n" + resultadoFinal);
+                    // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
 
-                    // 4. Chiste de la IA (Solo si hubo eliminado)
-                    if (resultadoFinal.contains("VICTORIA") || resultadoFinal.contains("GANÓ EL IMPOSTOR") || resultadoFinal.contains("INCORRECTO")) {
+                    if (resultado.equals("REVOTE")) {
+                        // CASO EMPATE: Avisamos y lanzamos votación DE NUEVO automáticamente
+                        broadcastMensaje(adminId, "⚖️ **¡HUBO UN EMPATE!** ⚖️\nNadie se salva hoy. ¡Tienen que votar de nuevo obligatoriamente!");
 
-                        // Chiste IA (Opcional, lo mandamos antes del menú)
-                        String chiste = aiService.responderChat("Comenta este resultado del juego Impostor: " + resultadoFinal);
-                        sendMsg(adminId, "🎙️ " + chiste);
-
-                        // ENVIAMOS EL MENÚ DE FIN DE PARTIDA
-                        enviarMenuFinPartida(adminId, "🏁 **PARTIDA FINALIZADA**\n\n" + resultadoFinal);
+                        // REINICIAMOS LA VOTACIÓN (Bucle)
+                        iniciarFaseVotacion(adminId);
 
                     } else {
-                        // Si hubo EMPATE, no mostramos el menú de fin, solo avisamos que sigue
-                        sendMsg(adminId, resultadoFinal);
+                        // CASO ALGUIEN ELIMINADO: Procesamos normal
+                        procesarResultadoFinal(adminId, resultado);
                     }
 
                 } else {
-                    // Simplemente confirmamos el voto y borramos los botones para que no vote doble
-                    answerCallback(callbackId, "Votaste a un sospechoso 🔪", false);
+                    // El usuario votó, borramos sus botones y le decimos que espere
                     DeleteMessage delete = new DeleteMessage(chatId.toString(), messageId);
                     try { execute(delete); } catch (Exception e) {}
                     sendMsg(chatId, "✅ Voto registrado. Esperando al resto...");
@@ -517,6 +510,17 @@ public class TelegramBot extends TelegramLongPollingBot {
         message.setReplyMarkup(markup);
 
         try { execute(message); } catch (TelegramApiException e) { e.printStackTrace(); }
+    }
+    private void broadcastMensaje(Long adminId, String texto) {
+        // Obtenemos la sesión gracias al método público que acabamos de poner en GameService
+        var session = gameService.obtenerSesion(adminId);
+
+        if (session != null) {
+            // Recorremos TODOS los jugadores (vivos y muertos, todos quieren saber el chisme)
+            for (Long idJugador : session.getJugadores().keySet()) {
+                sendMsg(idJugador, texto);
+            }
+        }
     }
     private void iniciarFaseVotacion(Long adminId) {
         // Obtenemos los jugadores vivos
@@ -774,6 +778,64 @@ public class TelegramBot extends TelegramLongPollingBot {
         markup.setKeyboard(rows);
 
         return markup;
+    }
+    private void procesarResultadoFinal(Long adminId, String resultadoRaw) {
+        String mensajeParaTodos = "";
+        boolean juegoTerminado = false;
+
+        // Ya no existe el case "EMPATE" aquí porque lo manejamos arriba en el REVOTE
+
+        if (resultadoRaw.startsWith("CONTINUAR")) {
+            String eliminado = resultadoRaw.split("\\|")[1];
+            mensajeParaTodos = "💀 **" + eliminado + " fue eliminado.**\n...PERO NO ERA EL IMPOSTOR 😱\n\n¡La partida sigue! 🔪";
+
+            // Mandamos botón al Admin para la siguiente ronda
+            broadcastMensaje(adminId, mensajeParaTodos);
+
+            // Le mandamos el botón de votar SOLO AL ADMIN para la prox ronda
+            enviarBotonVotacionAlAdmin(adminId);
+
+        }
+        else if (resultadoRaw.startsWith("VICTORIA_AGENTES")) {
+            String eliminado = resultadoRaw.split("\\|")[1];
+            mensajeParaTodos = "🎉 **¡VICTORIA DE LOS AGENTES!** 🎉\n\nEliminaron a **" + eliminado + "** y...\n😈 **¡ERA EL IMPOSTOR!** 😈";
+            juegoTerminado = true;
+            broadcastMensaje(adminId, mensajeParaTodos);
+        }
+        else if (resultadoRaw.startsWith("VICTORIA_IMPOSTOR")) {
+            String eliminado = resultadoRaw.split("\\|")[1];
+            String nombreImpostor = resultadoRaw.split("\\|")[2];
+            mensajeParaTodos = "💀 **¡VICTORIA DEL IMPOSTOR!** 💀\n\nEliminaron a " + eliminado + " (Inocente).\nQuedan pocos agentes.\n\n🤫 El Impostor era: **" + nombreImpostor + "**";
+            juegoTerminado = true;
+            broadcastMensaje(adminId, mensajeParaTodos);
+        }
+
+        // MENÚ FINAL (Solo al Admin para gestionar)
+        if (juegoTerminado) {
+            // Chiste IA para todos
+            try {
+                String chiste = aiService.responderChat("Comenta este resultado del juego: " + mensajeParaTodos);
+                broadcastMensaje(adminId, "🎙️ **IA:** " + chiste);
+            } catch (Exception e) {}
+
+            // Menú de gestión al Admin
+            enviarMenuFinPartida(adminId, "🏁 **FIN DE LA PARTIDA**");
+        }
+    }
+    private void enviarBotonVotacionAlAdmin(Long adminId) {
+        SendMessage msg = new SendMessage();
+        msg.setChatId(adminId.toString());
+        msg.setText("🗣️ **Ronda de discusión**\nCuando estén listos para eliminar a otro, toca aquí:");
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        var btn = new InlineKeyboardButton();
+        btn.setText("🗳️ INICIAR VOTACIÓN");
+        btn.setCallbackData("ADMIN:START_VOTE");
+        rows.add(List.of(btn));
+        markup.setKeyboard(rows);
+
+        try { execute(msg); } catch (Exception e) {}
     }
     @Override
     public String getBotUsername() { return botUsername; }

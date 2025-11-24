@@ -69,9 +69,6 @@ public class GameService {
         return "✅ **Party Creada**\nEres el Admin. Pide a tus amigos su /ID y agrégalos con:\n`/agregar [ID] [Apodo]`";
     }
 
-    public GameSession obtenerSesion(Long adminId) {
-        return partidasActivas.get(adminId);
-    }
 
     public String agregarJugador(Long adminId, Long jugadorId, String apodo) {
         GameSession session = partidasActivas.get(adminId);
@@ -166,9 +163,11 @@ public class GameService {
 
     public String calcularResultadoVotacion(Long adminId) {
         GameSession session = partidasActivas.get(adminId);
+        if (session == null) return "ERROR";
+
         Map<Long, Long> votos = session.getVotosActuales();
 
-        // 1. Contar frecuencia de votos
+        // 1. Contar votos
         Map<Long, Integer> conteo = new HashMap<>();
         for (Long sospechoso : votos.values()) {
             conteo.put(sospechoso, conteo.getOrDefault(sospechoso, 0) + 1);
@@ -185,19 +184,26 @@ public class GameService {
                 masVotado = entry.getKey();
                 empate = false;
             } else if (entry.getValue() == maxVotos) {
-                empate = true; // Hay empate en la cima
+                empate = true; // Detectamos empate
             }
         }
 
-        session.limpiarVotos(); // Limpiamos para la próxima
+        // Limpiamos los votos SIEMPRE para la siguiente ronda (o revotación)
+        session.limpiarVotos();
 
+        // 3. SI HAY EMPATE O NADIE VOTÓ -> REVOTACIÓN
         if (empate || masVotado == null) {
-            return "⚖️ **HUBO UN EMPATE** ⚖️\nNadie muere en esta ronda. ¡Sigan discutiendo!";
+            return "REVOTE"; // Señal para el bot: "Manda los botones de nuevo"
         }
 
-        // 3. Eliminar al más votado (Usamos tu lógica existente)
+        // 4. Si hay un ganador del voto, lo eliminamos
         String nombreEliminado = session.getJugadores().get(masVotado);
-        return procesarEliminacion(adminId, nombreEliminado); // Reutilizamos tu método de eliminar
+        return procesarEliminacion(adminId, nombreEliminado);
+    }
+
+    // Método auxiliar necesario para el Broadcast
+    public GameSession obtenerSesion(Long adminId) {
+        return partidasActivas.get(adminId);
     }
     public String salirDeParty(Long jugadorId) {
         // Buscamos en todas las partidas activas
@@ -324,25 +330,42 @@ public class GameService {
         if (session == null || !session.isEnJuego()) return "⚠️ No hay juego activo.";
 
         Long idEliminado = session.buscarIdPorApodo(apodoEliminado);
-        if (idEliminado == null) return "❌ No encontré a nadie con el apodo: " + apodoEliminado;
+        if (idEliminado == null) return "❌ No encontré el apodo: " + apodoEliminado;
 
-        // Lógica de eliminación
+        // 1. Eliminar al jugador de VIVOS
         session.eliminarJugador(idEliminado);
 
         boolean eraImpostor = session.esImpostor(idEliminado);
+        int vivos = session.getJugadoresVivos().size();
 
+        // 2. LÓGICA DE VICTORIA/DERROTA
         if (eraImpostor) {
-            partidasActivas.remove(adminId); // Fin del juego, borramos sesión
-            return "🎉 **¡VICTORIA!** 🎉\nEliminaron a " + apodoEliminado + " y ERA EL IMPOSTOR.\n🗣️EEEEENGORDABLE";
+            session.setEnJuego(false);
+            return "VICTORIA_AGENTES|" + apodoEliminado;
         } else {
-            // Verificar condición de victoria del Impostor (1 vs 1)
-            // Si quedan 2 vivos y uno es el impostor, gana el impostor
-            if (session.getJugadoresVivos().size() <= 2) {
-                partidasActivas.remove(adminId);
-                return "💀 **GANÓ EL IMPOSTOR** 💀\nQuedan 2 personas y una es el impostor.-1000 de aura como el Manchester de Pavito.\nEl impostor era: " + session.getJugadores().get(session.esImpostor(idEliminado) ? idEliminado : "Nadie (bug)"); // Simplificado
+            // Si el eliminado NO era impostor
+            // REGLA: Gana Impostor si quedan 2 personas (1 vs 1)
+            if (vivos <= 2) {
+                session.setEnJuego(false);
+
+                // --- CORRECCIÓN DEL BUG NULL ---
+                Long impId = session.getImpostorId();
+                String nombreImpostor = session.getJugadores().get(impId);
+
+                // Si por alguna razón el nombre es null, ponemos un fallback
+                if (nombreImpostor == null) {
+                    if (impId.equals(session.getAdminId())) {
+                        nombreImpostor = "El Admin (Tú)";
+                    } else {
+                        nombreImpostor = "Impostor Desconocido";
+                    }
+                }
+                // -------------------------------
+
+                return "VICTORIA_IMPOSTOR|" + apodoEliminado + "|" + nombreImpostor;
             }
 
-            return "😬 **INCORRECTO** 😬\n" + apodoEliminado + " NO era el impostor.\n🗣️Acaban de matar a un inocente.\n¡Continúen jugando!";
+            return "CONTINUAR|" + apodoEliminado;
         }
     }
 }

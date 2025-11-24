@@ -147,11 +147,14 @@ public class TelegramBot extends TelegramLongPollingBot {
             }
 // ... dentro del if (update.hasCallbackQuery()) ...
             else if (callData.equals("GAME:REPLAY")) {
-                // Borramos el menú anterior
+                // 1. Limpiamos la lógica del juego (revivir a todos)
+                gameService.reiniciarPartida(chatId);
+
+                // 2. Borramos el menú de "Fin de Partida"
                 DeleteMessage delete = new DeleteMessage(chatId.toString(), messageId);
                 try { execute(delete); } catch (Exception e) {}
 
-                // Mostramos el Lobby (ahí pueden ver quién está y darle a Comenzar)
+                // 3. Mostramos el Lobby limpio
                 enviarLobby(chatId);
             }
 

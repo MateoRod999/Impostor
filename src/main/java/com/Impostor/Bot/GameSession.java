@@ -64,8 +64,18 @@ public class GameSession {
     public boolean esImpostor(Long id) {
         return id.equals(impostorId);
     }
+    public void reiniciarSesion() {
+        this.enJuego = false;
+        this.impostorId = null;
+        this.palabraSecreta = null;
+        this.categoriaActual = null;
+        this.votosActuales.clear();
 
-    // Getters y métodos de utilidad
+        // Revivimos a todos los jugadores actuales
+        this.jugadoresVivos.clear();
+        this.jugadoresVivos.addAll(this.jugadores.keySet());
+    }
+
     public Long getAdminId() { return adminId; }
     public Map<Long, String> getJugadores() { return jugadores; }
     public boolean isEnJuego() { return enJuego; }

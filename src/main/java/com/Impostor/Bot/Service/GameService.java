@@ -86,37 +86,50 @@ public class GameService {
 
     public Map<Long, String> comenzarJuego(Long adminId, String categoriaPreferida) {
         GameSession session = partidasActivas.get(adminId);
-        if (session == null || session.getJugadores().size() < 3) {
-            return null; // Necesitas al menos 3 jugadores
+
+        // ⚠️ RECUERDA: Pon < 3 para jugar con gente real, o < 1 para pruebas solo
+        if (session == null || session.getJugadores().size() < 1) {
+            return null;
         }
 
-        // 1. Elegir Categoría
+        // 1. Limpiamos la sesión por si acaso venimos de un replay sucio
+        session.reiniciarSesion();
+
+        // 2. Elegir Categoría y Palabra (Igual que antes...)
         String categoriaUsar = categoriaPreferida.toLowerCase();
         if (categoriaPreferida.equals("random") || !baseDeDatosPalabras.containsKey(categoriaUsar)) {
             categoriaUsar = listaCategorias.get(new Random().nextInt(listaCategorias.size()));
         }
-
-        // 2. Elegir Palabra
         List<String> palabras = baseDeDatosPalabras.get(categoriaUsar);
         String palabra = palabras.get(new Random().nextInt(palabras.size()));
 
-        // 3. Elegir Impostor
+        // 3. ELEGIR IMPOSTOR (MEJORADO CON SHUFFLE) 🎲
         List<Long> ids = new ArrayList<>(session.getJugadores().keySet());
-        Long idImpostor = ids.get(new Random().nextInt(ids.size()));
+        Collections.shuffle(ids); // <--- ESTO MEZCLA LA LISTA SIEMPRE
+
+        Long idImpostor = ids.get(0); // Tomamos el primero de la lista ya mezclada
 
         // 4. Guardar estado
         session.iniciarRonda(idImpostor, palabra, categoriaUsar);
 
-        // 5. Retornar mapa de Mensajes para enviar (ID -> Texto a enviar)
+        // 5. Retornar mensajes...
         Map<Long, String> mensajesAEnviar = new HashMap<>();
         for (Long id : ids) {
             if (id.equals(idImpostor)) {
-                mensajesAEnviar.put(id, "🤫 **ERES EL IMPOSTOR** 🤫\nCategoría: " + categoriaUsar.toUpperCase() + "\nAnda por la mística.");
+                mensajesAEnviar.put(id, "🤫 **ERES EL IMPOSTOR** 🤫\nCategoría: " + categoriaUsar.toUpperCase() + "\nTu objetivo: Pasar desapercibido.");
             } else {
-                mensajesAEnviar.put(id, "🕵️ Sos un agente.\nCategoría: " + categoriaUsar.toUpperCase() + "\nLa palabra es: **" + palabra + "**");
+                mensajesAEnviar.put(id, "🕵️ Eres un Agente.\nCategoría: " + categoriaUsar.toUpperCase() + "\nLa palabra secreta es: **" + palabra + "**");
             }
         }
         return mensajesAEnviar;
+    }
+    public boolean reiniciarPartida(Long adminId) {
+        GameSession session = partidasActivas.get(adminId);
+        if (session != null) {
+            session.reiniciarSesion(); // Limpia muertos y votos
+            return true;
+        }
+        return false;
     }
     public List <String> getCategoriasDisponibles(){
         return listaCategorias;

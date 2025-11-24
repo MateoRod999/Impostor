@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,23 +25,35 @@ public class GameService {
     @PostConstruct
     public void cargarPalabras() {
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            // Carga el archivo desde resources
-            JsonNode root = mapper.readTree(new ClassPathResource("words.json").getFile());
-            JsonNode categorias = root.get("categorias");
+            // 1. Buscamos el archivo como recurso (igual que en SilverSorgo)
+            ClassPathResource resource = new ClassPathResource("words.json");
 
-            if (categorias.isArray()) {
-                for (JsonNode cat : categorias) {
-                    String nombreCat = cat.get("nombre").asText().toLowerCase();
-                    List<String> palabras = new ArrayList<>();
-                    cat.get("palabras").forEach(p -> palabras.add(p.asText()));
+            // 2. Abrimos el flujo de datos (InputStream)
+            // El 'try' entre paréntesis asegura que se cierre solo al terminar
+            try (InputStream inputStream = resource.getInputStream()) {
 
-                    baseDeDatosPalabras.put(nombreCat, palabras);
-                    listaCategorias.add(nombreCat);
+                ObjectMapper mapper = new ObjectMapper();
+
+                // 3. Leemos el árbol JSON directamente del Stream
+                JsonNode root = mapper.readTree(inputStream);
+                JsonNode categorias = root.get("categorias");
+
+                if (categorias.isArray()) {
+                    for (JsonNode cat : categorias) {
+                        String nombreCat = cat.get("nombre").asText().toLowerCase();
+                        List<String> palabras = new ArrayList<>();
+                        cat.get("palabras").forEach(p -> palabras.add(p.asText()));
+
+                        baseDeDatosPalabras.put(nombreCat, palabras);
+                        listaCategorias.add(nombreCat);
+                    }
                 }
+                System.out.println(">>> ¡Palabras cargadas! Categorías: " + listaCategorias);
             }
-            System.out.println("✅ Palabras cargadas: " + listaCategorias);
+
         } catch (IOException e) {
+            System.err.println("!!! ERROR AL CARGAR EL words.json !!!");
+            // Imprimimos el error real para verlo en los logs de Render
             e.printStackTrace();
         }
     }

@@ -1,0 +1,262 @@
+package com.Impostor.Bot.Service;
+
+import com.Impostor.Bot.GameSession;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Service;
+
+import jakarta.annotation.PostConstruct;
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Service
+public class GameService {
+
+    // Mapa de sesiones activas (AdminID -> Sesión)
+    private final Map<Long, GameSession> partidasActivas = new ConcurrentHashMap<>();
+
+    // Mapa de categorías cargado desde el JSON
+    private final Map<String, List<String>> baseDeDatosPalabras = new HashMap<>();
+    private final List<String> listaCategorias = new ArrayList<>();
+
+    @PostConstruct
+    public void cargarPalabras() {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            // Carga el archivo desde resources
+            JsonNode root = mapper.readTree(new ClassPathResource("words.json").getFile());
+            JsonNode categorias = root.get("categorias");
+
+            if (categorias.isArray()) {
+                for (JsonNode cat : categorias) {
+                    String nombreCat = cat.get("nombre").asText().toLowerCase();
+                    List<String> palabras = new ArrayList<>();
+                    cat.get("palabras").forEach(p -> palabras.add(p.asText()));
+
+                    baseDeDatosPalabras.put(nombreCat, palabras);
+                    listaCategorias.add(nombreCat);
+                }
+            }
+            System.out.println("✅ Palabras cargadas: " + listaCategorias);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // --- GESTIÓN DE PARTIDAS ---
+
+    public String crearParty(Long adminId, String adminName) {
+        if (partidasActivas.containsKey(adminId)) {
+            return "⚠️ Ya tienes una partida activa. Termínala o reiníciala.";
+        }
+        GameSession session = new GameSession(adminId, adminName);
+        partidasActivas.put(adminId, session);
+        return "✅ **Party Creada**\nEres el Admin. Pide a tus amigos su /ID y agrégalos con:\n`/agregar [ID] [Apodo]`";
+    }
+
+    public GameSession obtenerSesion(Long adminId) {
+        return partidasActivas.get(adminId);
+    }
+
+    public String agregarJugador(Long adminId, Long jugadorId, String apodo) {
+        GameSession session = partidasActivas.get(adminId);
+        if (session == null) return "❌ No has creado una party.";
+        if (session.isEnJuego()) return "❌ La partida ya empezó.";
+
+        session.getJugadores().put(jugadorId, apodo);
+        return "✅ Jugador " + apodo + " agregado.";
+    }
+
+    // --- LÓGICA DE JUEGO ---
+
+    public Map<Long, String> comenzarJuego(Long adminId, String categoriaPreferida) {
+        GameSession session = partidasActivas.get(adminId);
+        if (session == null || session.getJugadores().size() < 3) {
+            return null; // Necesitas al menos 3 jugadores
+        }
+
+        // 1. Elegir Categoría
+        String categoriaUsar = categoriaPreferida.toLowerCase();
+        if (categoriaPreferida.equals("random") || !baseDeDatosPalabras.containsKey(categoriaUsar)) {
+            categoriaUsar = listaCategorias.get(new Random().nextInt(listaCategorias.size()));
+        }
+
+        // 2. Elegir Palabra
+        List<String> palabras = baseDeDatosPalabras.get(categoriaUsar);
+        String palabra = palabras.get(new Random().nextInt(palabras.size()));
+
+        // 3. Elegir Impostor
+        List<Long> ids = new ArrayList<>(session.getJugadores().keySet());
+        Long idImpostor = ids.get(new Random().nextInt(ids.size()));
+
+        // 4. Guardar estado
+        session.iniciarRonda(idImpostor, palabra, categoriaUsar);
+
+        // 5. Retornar mapa de Mensajes para enviar (ID -> Texto a enviar)
+        Map<Long, String> mensajesAEnviar = new HashMap<>();
+        for (Long id : ids) {
+            if (id.equals(idImpostor)) {
+                mensajesAEnviar.put(id, "🤫 **ERES EL IMPOSTOR** 🤫\nCategoría: " + categoriaUsar.toUpperCase() + "\nTu objetivo: Pasar desapercibido.");
+            } else {
+                mensajesAEnviar.put(id, "🕵️ Eres un Agente.\nCategoría: " + categoriaUsar.toUpperCase() + "\nLa palabra secreta es: **" + palabra + "**");
+            }
+        }
+        return mensajesAEnviar;
+    }
+    public List <String> getCategoriasDisponibles(){
+        return listaCategorias;
+    }
+    // Devuelve un mapa ID->Nombre solo de los vivos (para los botones)
+    public Map<Long, String> obtenerJugadoresVivos(Long adminId) {
+        GameSession session = partidasActivas.get(adminId);
+        if (session == null) return new HashMap<>();
+
+        Map<Long, String> vivos = new HashMap<>();
+        for (Long id : session.getJugadoresVivos()) {
+            vivos.put(id, session.getJugadores().get(id));
+        }
+        return vivos;
+    }
+
+    public String registrarVoto(Long adminId, Long votanteId, Long sospechosoId) {
+        GameSession session = partidasActivas.get(adminId);
+        if (session == null) return "Error de sesión.";
+
+        // Registramos el voto
+        session.registrarVoto(votanteId, sospechosoId);
+
+        // Verificamos si ya votaron todos los vivos
+        int totalVivos = session.getJugadoresVivos().size();
+        int votosTotales = session.getCantidadVotos();
+
+        if (votosTotales >= totalVivos) {
+            return "COMPLETO"; // Señal para calcular el resultado
+        }
+
+        return "Voto registrado (" + votosTotales + "/" + totalVivos + ")";
+    }
+
+    public String calcularResultadoVotacion(Long adminId) {
+        GameSession session = partidasActivas.get(adminId);
+        Map<Long, Long> votos = session.getVotosActuales();
+
+        // 1. Contar frecuencia de votos
+        Map<Long, Integer> conteo = new HashMap<>();
+        for (Long sospechoso : votos.values()) {
+            conteo.put(sospechoso, conteo.getOrDefault(sospechoso, 0) + 1);
+        }
+
+        // 2. Buscar al más votado
+        Long masVotado = null;
+        int maxVotos = -1;
+        boolean empate = false;
+
+        for (Map.Entry<Long, Integer> entry : conteo.entrySet()) {
+            if (entry.getValue() > maxVotos) {
+                maxVotos = entry.getValue();
+                masVotado = entry.getKey();
+                empate = false;
+            } else if (entry.getValue() == maxVotos) {
+                empate = true; // Hay empate en la cima
+            }
+        }
+
+        session.limpiarVotos(); // Limpiamos para la próxima
+
+        if (empate || masVotado == null) {
+            return "⚖️ **HUBO UN EMPATE** ⚖️\nNadie muere en esta ronda. ¡Sigan discutiendo!";
+        }
+
+        // 3. Eliminar al más votado (Usamos tu lógica existente)
+        String nombreEliminado = session.getJugadores().get(masVotado);
+        return procesarEliminacion(adminId, nombreEliminado); // Reutilizamos tu método de eliminar
+    }
+    // --- NUEVO MÉTODO: Ver info de la Party ---
+    public String obtenerInfoParty(Long adminId) {
+        GameSession session = partidasActivas.get(adminId);
+
+        if (session == null) {
+            return "❌ No tienes una party creada.\nUsa `/crearparty` para empezar.";
+        }
+
+        Map<Long, String> jugadores = session.getJugadores();
+        StringBuilder sb = new StringBuilder("📋 **INTEGRANTES DE LA PARTY:**\n\n");
+
+        int i = 1;
+        for (Map.Entry<Long, String> entry : jugadores.entrySet()) {
+            Long id = entry.getKey();
+            String apodo = entry.getValue();
+
+            sb.append(i).append(". **").append(apodo).append("**");
+
+            // Marcamos quién es el admin
+            if (id.equals(adminId)) {
+                sb.append(" (Admin 👑)");
+            }
+
+            // (Opcional) Si quieres mostrar el ID también:
+            // sb.append(" [`").append(id).append("`]");
+
+            sb.append("\n");
+            i++;
+        }
+
+        sb.append("\n👥 Total: ").append(jugadores.size()).append(" jugadores.");
+
+        if (jugadores.size() < 3) {
+            sb.append("\n⚠️ _Faltan al menos ").append(3 - jugadores.size()).append(" para poder iniciar._");
+        } else {
+            sb.append("\n✅ _¡Listos para comenzar!_");
+        }
+
+        return sb.toString();
+    }
+    public void cerrarParty(Long adminId) {
+        partidasActivas.remove(adminId);
+    }
+    public Map<Long, String> obtenerMapaJugadores(Long adminId) {
+        GameSession session = partidasActivas.get(adminId);
+        return (session != null) ? session.getJugadores() : null;
+    }
+    public String expulsarJugador(Long adminId, Long idJugadorAExpulsar) {
+        GameSession session = partidasActivas.get(adminId);
+        if (session == null) return "Error: No hay party.";
+
+        String nombre = session.getJugadores().get(idJugadorAExpulsar);
+        if (nombre != null) {
+            session.getJugadores().remove(idJugadorAExpulsar);
+            // También lo sacamos de vivos por si acaso
+            session.eliminarJugador(idJugadorAExpulsar);
+            return nombre; // Devolvemos el nombre para confirmar
+        }
+        return null;
+    }
+    public String procesarEliminacion(Long adminId, String apodoEliminado) {
+        GameSession session = partidasActivas.get(adminId);
+        if (session == null || !session.isEnJuego()) return "⚠️ No hay juego activo.";
+
+        Long idEliminado = session.buscarIdPorApodo(apodoEliminado);
+        if (idEliminado == null) return "❌ No encontré a nadie con el apodo: " + apodoEliminado;
+
+        // Lógica de eliminación
+        session.eliminarJugador(idEliminado);
+
+        boolean eraImpostor = session.esImpostor(idEliminado);
+
+        if (eraImpostor) {
+            partidasActivas.remove(adminId); // Fin del juego, borramos sesión
+            return "🎉 **¡VICTORIA!** 🎉\nEliminaron a " + apodoEliminado + " y ERA EL IMPOSTOR.\n¡Ganaron los agentes!";
+        } else {
+            // Verificar condición de victoria del Impostor (1 vs 1)
+            // Si quedan 2 vivos y uno es el impostor, gana el impostor
+            if (session.getJugadoresVivos().size() <= 2) {
+                partidasActivas.remove(adminId);
+                return "💀 **GANÓ EL IMPOSTOR** 💀\nQuedan 2 personas y una es el impostor. Ya no pueden votar.\nEl impostor era: " + session.getJugadores().get(session.esImpostor(idEliminado) ? idEliminado : "Nadie (bug)"); // Simplificado
+            }
+
+            return "😬 **INCORRECTO** 😬\n" + apodoEliminado + " NO era el impostor.\nFue eliminado injustamente.\n¡Continúen jugando!";
+        }
+    }
+}

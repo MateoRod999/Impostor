@@ -1,0 +1,16 @@
+{
+  "categorias": [
+    {
+      "nombre": "futbol",
+      "palabras": ["Lionel Messi", "Cristiano Ronaldo", "Diego Maradona", "Pelé", "Dibu Martínez", "La Bombonera", "Mundial 2022", "VAR", "Tarjeta Roja"]
+    },
+    {
+      "nombre": "cocina",
+      "palabras": ["Pizza", "Sushi", "Asado", "Microondas", "Cuchillo", "Sal", "MasterChef", "Hamburguesa"]
+    },
+    {
+      "nombre": "animales",
+      "palabras": ["León", "Pingüino", "Perro", "Gato", "Dinosaurio", "Tiburón", "Mosquito"]
+    }
+  ]
+}

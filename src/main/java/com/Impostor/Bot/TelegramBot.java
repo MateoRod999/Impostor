@@ -162,7 +162,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 EditMessageText edit = new EditMessageText();
                 edit.setChatId(chatId.toString());
                 edit.setMessageId(messageId);
-                edit.setText("👋 **Party Finalizada.**\n¡Gracias por jugar! Usen /start para jugar otra vez.");
+                edit.setText("👋 **Party Finalizada.**\n¡Gracias por jugar! Usen /menu para jugar otra vez.");
                 try { execute(edit); } catch (Exception e) {}
             }
 
@@ -177,7 +177,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 EditMessageText edit = new EditMessageText();
                 edit.setChatId(chatId.toString());
                 edit.setMessageId(messageId);
-                edit.setText("🛑 **PARTY ELIMINADA**\nLa sala ha sido cerrada por el administrador.");
+                edit.setText("🛑 **PARTY ELIMINADA**\nLa sala ha sido cerrada por el administrador.\nUtiliza /menu para volver a jugar");
                 try { execute(edit); } catch (Exception e) {}
 
                 answerCallback(callbackId, "Party eliminada correctamente.");
@@ -197,7 +197,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                     EditMessageText edit = new EditMessageText();
                     edit.setChatId(chatId.toString());
                     edit.setMessageId(messageId);
-                    edit.setText("👋 **Has salido de la party.**\nUsa /start si quieres unirte a otra.");
+                    edit.setText("👋 **Has salido de la party.**\nUsa /menu si quieres unirte a otra.");
                     try { execute(edit); } catch (Exception e) {}
 
                     // 2. Avisamos al Admin (Importante para que sepa)
@@ -394,13 +394,13 @@ public class TelegramBot extends TelegramLongPollingBot {
                     sendMsg(chatId, "👋 Saliste de la party.");
                     sendMsg(Long.parseLong(datos[1]), "⚠️ " + datos[2] + " salió de la party.");
                 } else {
-                    sendMsg(chatId, "❌ No estás en ninguna party.");
+                    sendMsg(chatId, "❌ No estás en ninguna party.\nPrueba a crear una con /crearparty");
                 }
             }
 
             else if (messageText.equals("/eliminarparty")) {
                 gameService.eliminarParty(chatId);
-                sendMsg(chatId, "🗑️ Party eliminada.");
+                sendMsg(chatId, "🗑️ Party eliminada.\n/menu para volver a empezar");
             }
             else if (messageText.equals("/ayuda")) {
                 String ayuda = aiService.obtenerAyuda();
@@ -445,7 +445,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         String rawInfo = gameService.obtenerInfoPartyInteligente(chatId);
 
         if (rawInfo == null) {
-            sendMsg(chatId, "❌ No estás en ninguna party actualmente.");
+            sendMsg(chatId, "❌ No estás en ninguna party actualmente. \nUtiliza /crearparty para unirte a una o /ID para obtener tu ID y enviarselo al admin de la party");
             return;
         }
 
@@ -615,7 +615,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             // 2. Construir mensaje final para el Admin
             String reporteFinal = "🎮 **¡JUEGO INICIADO!**\n" +
                     "Categoría: " + categoria.toUpperCase() + "\n\n" +
-                    "🗣️ _¡Que comience el debate!_\n" +
+                    "🗣️ BOOOOOOOOOOEEEEEEEEEEEEE\n" +
                     "Cuando estén listos para eliminar a alguien, presiona el botón.";
 
             if (errores.length() > 0) {
@@ -644,7 +644,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             try { execute(msgAdmin); } catch (TelegramApiException e) { e.printStackTrace(); }
 
         } else {
-            sendMsg(adminChatId, "❌ Error: Faltan jugadores (mínimo 3) o no creaste la party.\n🔄 Utiliza el comando /start para volver a empezar");
+            sendMsg(adminChatId, "❌ Error: Faltan jugadores (mínimo 3) o no creaste la party.\n🔄 Utiliza el comando /menu para volver a empezar");
         }
     }
     private void sendMsg(Long chatId, String text) {

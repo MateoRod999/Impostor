@@ -85,7 +85,7 @@ public class GameService {
         GameSession session = partidasActivas.get(adminId);
 
         // ⚠️ RECUERDA: Pon < 3 para jugar con gente real, o < 1 para pruebas solo
-        if (session == null || session.getJugadores().size() < 1) {
+        if (session == null || session.getJugadores().size() < 3) {
             return null;
         }
 

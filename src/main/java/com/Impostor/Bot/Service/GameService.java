@@ -111,9 +111,9 @@ public class GameService {
         Map<Long, String> mensajesAEnviar = new HashMap<>();
         for (Long id : ids) {
             if (id.equals(idImpostor)) {
-                mensajesAEnviar.put(id, "🤫 **ERES EL IMPOSTOR** 🤫\nCategoría: " + categoriaUsar.toUpperCase() + "\nTu objetivo: Pasar desapercibido.");
+                mensajesAEnviar.put(id, "🤫 **ERES EL IMPOSTOR** 🤫\nCategoría: " + categoriaUsar.toUpperCase() + "\nAnda por la mística.");
             } else {
-                mensajesAEnviar.put(id, "🕵️ Eres un Agente.\nCategoría: " + categoriaUsar.toUpperCase() + "\nLa palabra secreta es: **" + palabra + "**");
+                mensajesAEnviar.put(id, "🕵️ Sos un agente.\nCategoría: " + categoriaUsar.toUpperCase() + "\nLa palabra es: **" + palabra + "**");
             }
         }
         return mensajesAEnviar;
@@ -260,16 +260,16 @@ public class GameService {
 
         if (eraImpostor) {
             partidasActivas.remove(adminId); // Fin del juego, borramos sesión
-            return "🎉 **¡VICTORIA!** 🎉\nEliminaron a " + apodoEliminado + " y ERA EL IMPOSTOR.\n¡Ganaron los agentes!";
+            return "🎉 **¡VICTORIA!** 🎉\nEliminaron a " + apodoEliminado + " y ERA EL IMPOSTOR.\n🗣️EEEEENGORDABLE";
         } else {
             // Verificar condición de victoria del Impostor (1 vs 1)
             // Si quedan 2 vivos y uno es el impostor, gana el impostor
             if (session.getJugadoresVivos().size() <= 2) {
                 partidasActivas.remove(adminId);
-                return "💀 **GANÓ EL IMPOSTOR** 💀\nQuedan 2 personas y una es el impostor. Ya no pueden votar.\nEl impostor era: " + session.getJugadores().get(session.esImpostor(idEliminado) ? idEliminado : "Nadie (bug)"); // Simplificado
+                return "💀 **GANÓ EL IMPOSTOR** 💀\nQuedan 2 personas y una es el impostor.-1000 de aura como el Manchester de Pavito.\nEl impostor era: " + session.getJugadores().get(session.esImpostor(idEliminado) ? idEliminado : "Nadie (bug)"); // Simplificado
             }
 
-            return "😬 **INCORRECTO** 😬\n" + apodoEliminado + " NO era el impostor.\nFue eliminado injustamente.\n¡Continúen jugando!";
+            return "😬 **INCORRECTO** 😬\n" + apodoEliminado + " NO era el impostor.\n🗣️Acaban de matar a un inocente.\n¡Continúen jugando!";
         }
     }
 }

@@ -50,8 +50,52 @@ public class TelegramBot extends TelegramLongPollingBot {
 
             // --- A. MENÚ DE BIENVENIDA ---
             if (callData.equals("WELCOME:GET_ID")) {
-                // Mostramos el ID en una alerta (Pop-up)
-                answerCallback(callbackId, "Tu ID es: " + chatId, true);
+                // 1. Preparamos el mensaje con el ID copiable
+                String textoId = "🆔 **TU CREDENCIAL DE JUGADOR**\n\n" +
+                        "Tu ID es:\n`" + chatId + "`\n\n" +
+                        "👆 _Toca el número para copiarlo y envíaselo al administrador de la party._";
+
+                EditMessageText edit = new EditMessageText();
+                edit.setChatId(chatId.toString());
+                edit.setMessageId(messageId);
+                edit.setText(textoId);
+                edit.setParseMode("Markdown");
+
+                // 2. Botón de Volver
+                InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+                List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+                var btnBack = new InlineKeyboardButton();
+                btnBack.setText("⬅️ Volver al Menú");
+                btnBack.setCallbackData("WELCOME:BACK");
+                rows.add(List.of(btnBack));
+
+                markup.setKeyboard(rows);
+                edit.setReplyMarkup(markup);
+
+                try { execute(edit); } catch (TelegramApiException e) { e.printStackTrace(); }
+            }
+            else if (callData.equals("WELCOME:BACK")) {
+                // VOLVEMOS AL MENÚ PRINCIPAL (Editamos el mensaje para que vuelva a ser la bienvenida)
+                String textoBienvenida = "🕵️‍♂️ **IMPOSTOR BOT** 🕵️‍♀️\n" +
+                        "Bienvenido/a.\n\n" +
+                        "Aquí pondremos a prueba tu capacidad de mentir.\n\n" +
+                        "👇 **¿QUÉ DESEAS HACER?**\n" +
+                        "• Si te invitaron a jugar, obtén tu ID y pásaselo al Admin.\n" +
+                        "• Si eres el organizador, crea la sala aquí mismo.\n\n"+
+                        "Puedes utilizar los siguientes comandos:\n"+
+                        "/menu para ingresar a este menú\n"+
+                        "/ID para conocer tu id\n"+
+                        "/crearparty para comenzar una party y jugar con tus amigos\n"+
+                        "/agregar (ID) (apodo) para agregar a tus amigos a tu party\n"+
+                        "/comenzar para iniciar tu partida\n"+"\uD83E\uDD16 Y si tenes alguna otra duda, no dudes en consultarmelo que te lo voy a responder, quizá con malagana pero lo haré ok.";
+
+                EditMessageText edit = new EditMessageText();
+                edit.setChatId(chatId.toString());
+                edit.setMessageId(messageId);
+                edit.setText(textoBienvenida);
+                edit.setParseMode("Markdown");
+                edit.setReplyMarkup(getMenuBienvenida()); // <--- Reutilizas los mismos botones
+                try { execute(edit); } catch (TelegramApiException e) { e.printStackTrace(); }
             }
             else if (callData.equals("WELCOME:CREATE")) {
                 // Intentamos crear la party
@@ -233,7 +277,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
             // --- COMANDOS ---
 
-            if (messageText.equals("/start")) {
+            if (messageText.equals("/start")||messageText.equals("/menu")) {
                 // Ahora mostramos el menú con botones
                 enviarBienvenida(chatId, username);
             }
@@ -511,7 +555,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             try { execute(msgAdmin); } catch (TelegramApiException e) { e.printStackTrace(); }
 
         } else {
-            sendMsg(adminChatId, "❌ Error: Faltan jugadores (mínimo 3) o no creaste la party.");
+            sendMsg(adminChatId, "❌ Error: Faltan jugadores (mínimo 3) o no creaste la party.\n🔄 Utiliza el comando /start para volver a empezar");
         }
     }
     private void sendMsg(Long chatId, String text) {
@@ -527,34 +571,20 @@ public class TelegramBot extends TelegramLongPollingBot {
                 "Aquí pondremos a prueba tu capacidad de mentir.\n\n" +
                 "👇 **¿QUÉ DESEAS HACER?**\n" +
                 "• Si te invitaron a jugar, obtén tu ID y pásaselo al Admin.\n" +
-                "• Si eres el organizador, crea la sala aquí mismo.";
+                "• Si eres el organizador, crea la sala aquí mismo.\n\n"+
+                "Puedes utilizar los siguientes comandos:\n"+
+                "/menu para ingresar a este menú\n"+
+                "/ID para conocer tu id\n"+
+                "/crearparty para comenzar una party y jugar con tus amigos\n"+
+                "/agregar (ID) (apodo) para agregar a tus amigos a tu party\n"+
+                "/comenzar para iniciar tu partida\n"+"\uD83E\uDD16 Y si tenes alguna otra duda, no dudes en consultarmelo que te lo voy a responder, quizá con malagana pero lo haré ok.";
 
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         message.setText(texto);
         message.setParseMode("Markdown");
 
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-
-        // BOTÓN 1: OBTENER ID
-        List<InlineKeyboardButton> row1 = new ArrayList<>();
-        var btnId = new InlineKeyboardButton();
-        btnId.setText("🆔 Obtener mi ID");
-        btnId.setCallbackData("WELCOME:GET_ID");
-        row1.add(btnId);
-        rows.add(row1);
-
-        // BOTÓN 2: CREAR PARTY
-        List<InlineKeyboardButton> row2 = new ArrayList<>();
-        var btnCreate = new InlineKeyboardButton();
-        btnCreate.setText("🎮 Crear Nueva Party");
-        btnCreate.setCallbackData("WELCOME:CREATE");
-        row2.add(btnCreate);
-        rows.add(row2);
-
-        markup.setKeyboard(rows);
-        message.setReplyMarkup(markup);
+        message.setReplyMarkup(getMenuBienvenida()); // <--- Mucho más corto
 
         try { execute(message); } catch (TelegramApiException e) { e.printStackTrace(); }
     }
@@ -597,11 +627,6 @@ public class TelegramBot extends TelegramLongPollingBot {
         // Obtenemos la sesión actual para ver los jugadores
         String info = "🗑️ **SELECCIONA A QUIÉN ELIMINAR DE LA PARTY:**";
 
-        // Usamos el servicio para obtener el mapa de jugadores
-        // (Truco: usamos obtenerInfoParty para validar, pero aquí accedemos directo al mapa si es posible,
-        // o mejor, modificamos GameService para que nos de el mapa.
-        // Para hacerlo simple aquí, asumiremos que GameService tiene un getter público de la sesión o creamos un método rápido).
-        // ⚠️ NOTA: Agregaremos un método 'obtenerMapaJugadores' en GameService abajo para esto.
 
         Map<Long, String> jugadores = gameService.obtenerMapaJugadores(chatId);
 
@@ -638,7 +663,26 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         try { execute(edit); } catch (TelegramApiException e) { e.printStackTrace(); }
     }
+    private InlineKeyboardMarkup getMenuBienvenida() {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
 
+        // Botón ID
+        var btnId = new InlineKeyboardButton();
+        btnId.setText("🆔 Obtener mi ID");
+        btnId.setCallbackData("WELCOME:GET_ID");
+
+        // Botón Crear
+        var btnCreate = new InlineKeyboardButton();
+        btnCreate.setText("🎮 Crear Nueva Party");
+        btnCreate.setCallbackData("WELCOME:CREATE");
+
+        rows.add(List.of(btnId));
+        rows.add(List.of(btnCreate));
+        markup.setKeyboard(rows);
+
+        return markup;
+    }
     @Override
     public String getBotUsername() { return botUsername; }
     @Override

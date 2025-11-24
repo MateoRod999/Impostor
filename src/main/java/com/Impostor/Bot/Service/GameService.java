@@ -186,7 +186,67 @@ public class GameService {
         String nombreEliminado = session.getJugadores().get(masVotado);
         return procesarEliminacion(adminId, nombreEliminado); // Reutilizamos tu método de eliminar
     }
-    // --- NUEVO MÉTODO: Ver info de la Party ---
+    public String salirDeParty(Long jugadorId) {
+        // Buscamos en todas las partidas activas
+        for (Map.Entry<Long, GameSession> entry : partidasActivas.entrySet()) {
+            GameSession session = entry.getValue();
+
+            // Si el jugador está en esta party
+            if (session.getJugadores().containsKey(jugadorId)) {
+
+                // CASO A: Es el Admin
+                if (session.getAdminId().equals(jugadorId)) {
+                    partidasActivas.remove(jugadorId);
+                    return "ADMIN_CLOSED"; // Si el admin sale, se borra la party
+                }
+
+                // CASO B: Es un jugador normal
+                String apodo = session.getJugadores().get(jugadorId);
+                session.getJugadores().remove(jugadorId);
+                session.eliminarJugador(jugadorId); // Lo sacamos de vivos también
+
+                return "LEFT:" + session.getAdminId() + ":" + apodo; // Devolvemos ID del admin para avisarle
+            }
+        }
+        return "NOT_FOUND";
+    }
+
+    // 2. Método inteligente para obtener info de la party (seas Admin o Jugador)
+    public String obtenerInfoPartyInteligente(Long usuarioId) {
+        GameSession session = null;
+
+        // Primero revisamos si es Admin
+        if (partidasActivas.containsKey(usuarioId)) {
+            session = partidasActivas.get(usuarioId);
+        } else {
+            // Si no, buscamos si es participante en alguna
+            for (GameSession s : partidasActivas.values()) {
+                if (s.getJugadores().containsKey(usuarioId)) {
+                    session = s;
+                    break;
+                }
+            }
+        }
+
+        if (session == null) return null; // No está en ninguna party
+
+        // Construimos el texto (reutilizando lógica o copiando el formato)
+        StringBuilder sb = new StringBuilder("📋 **LOBBY DE LA PARTY**\nAdmin: " + session.getJugadores().get(session.getAdminId()) + "\n\n");
+        int i = 1;
+        for (String nombre : session.getJugadores().values()) {
+            sb.append(i++).append(". ").append(nombre).append("\n");
+        }
+        sb.append("\n👥 Total: ").append(session.getJugadores().size());
+
+        // Retornamos también si el que pide es Admin o no (truco para los botones)
+        boolean esAdmin = session.getAdminId().equals(usuarioId);
+        return (esAdmin ? "ROLE:ADMIN" : "ROLE:PLAYER") + "||" + sb.toString();
+    }
+
+    // 3. Eliminar party por ID de Admin (Wrapper simple)
+    public void eliminarParty(Long adminId) {
+        partidasActivas.remove(adminId);
+    }
     public String obtenerInfoParty(Long adminId) {
         GameSession session = partidasActivas.get(adminId);
 

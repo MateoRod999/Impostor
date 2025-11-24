@@ -86,7 +86,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                         "/menu para ingresar a este menú\n"+
                         "/ID para conocer tu id\n"+
                         "/crearparty para comenzar una party y jugar con tus amigos\n"+
-                        "/agregar (ID) (apodo) para agregar a tus amigos a tu party\n"+
+                        "/agregar (ID) (apodo) para agregar a tus amigos a tu party\n"+"/party para ver y gestionar tu party actual \n"+
                         "/comenzar para iniciar tu partida\n"+"\uD83E\uDD16 Y si tenes alguna otra duda, no dudes en consultarmelo que te lo voy a responder, quizá con malagana pero lo haré ok.";
 
                 EditMessageText edit = new EditMessageText();
@@ -170,7 +170,47 @@ public class TelegramBot extends TelegramLongPollingBot {
                 // Mostramos el menú de expulsión
                 enviarMenuExpulsion(chatId, messageId);
             }
+            else if (callData.equals("LOBBY:DELETE_PARTY")) {
+                // El Admin borra la party
+                gameService.eliminarParty(chatId);
 
+                EditMessageText edit = new EditMessageText();
+                edit.setChatId(chatId.toString());
+                edit.setMessageId(messageId);
+                edit.setText("🛑 **PARTY ELIMINADA**\nLa sala ha sido cerrada por el administrador.");
+                try { execute(edit); } catch (Exception e) {}
+
+                answerCallback(callbackId, "Party eliminada correctamente.");
+            }
+
+            else if (callData.equals("LOBBY:LEAVE_PARTY")) {
+                // El Jugador se sale
+                String resultado = gameService.salirDeParty(chatId);
+
+                if (resultado.startsWith("LEFT:")) {
+                    // LEFT:ID_ADMIN:APODO
+                    String[] datos = resultado.split(":");
+                    Long adminId = Long.parseLong(datos[1]);
+                    String apodo = datos[2];
+
+                    // 1. Confirmamos al jugador que salió
+                    EditMessageText edit = new EditMessageText();
+                    edit.setChatId(chatId.toString());
+                    edit.setMessageId(messageId);
+                    edit.setText("👋 **Has salido de la party.**\nUsa /start si quieres unirte a otra.");
+                    try { execute(edit); } catch (Exception e) {}
+
+                    // 2. Avisamos al Admin (Importante para que sepa)
+                    sendMsg(adminId, "⚠️ **" + apodo + "** ha abandonado la party.");
+                    // Opcional: Podrías reenviar el lobby actualizado al admin automáticamente
+                    // enviarLobby(adminId);
+
+                } else if (resultado.equals("NOT_FOUND")) {
+                    answerCallback(callbackId, "Ya no estás en ninguna party.", true);
+                    DeleteMessage delete = new DeleteMessage(chatId.toString(), messageId);
+                    try { execute(delete); } catch (Exception e) {}
+                }
+            }
             else if (callData.startsWith("KICK:")) {
                 String idStr = callData.split(":")[1];
                 Long idKick = Long.parseLong(idStr);
@@ -346,7 +386,22 @@ public class TelegramBot extends TelegramLongPollingBot {
                     }
                 }
             }
+            else if (messageText.equals("/salirparty")) {
+                // Reutilizamos la lógica del botón (pero sin editar mensaje, solo enviando nuevo)
+                String res = gameService.salirDeParty(chatId);
+                if (res.startsWith("LEFT:")) {
+                    String[] datos = res.split(":");
+                    sendMsg(chatId, "👋 Saliste de la party.");
+                    sendMsg(Long.parseLong(datos[1]), "⚠️ " + datos[2] + " salió de la party.");
+                } else {
+                    sendMsg(chatId, "❌ No estás en ninguna party.");
+                }
+            }
 
+            else if (messageText.equals("/eliminarparty")) {
+                gameService.eliminarParty(chatId);
+                sendMsg(chatId, "🗑️ Party eliminada.");
+            }
             else if (messageText.equals("/ayuda")) {
                 String ayuda = aiService.obtenerAyuda();
                 sendMsg(chatId, ayuda);
@@ -386,40 +441,74 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     // --- MÉTODO NUEVO: MUESTRA EL LOBBY INTERACTIVO ---
     private void enviarLobby(Long chatId) {
-        // 1. Obtenemos el texto de la lista de jugadores
-        String infoParty = gameService.obtenerInfoParty(chatId);
+        // Usamos el nuevo método inteligente del servicio
+        String rawInfo = gameService.obtenerInfoPartyInteligente(chatId);
+
+        if (rawInfo == null) {
+            sendMsg(chatId, "❌ No estás en ninguna party actualmente.");
+            return;
+        }
+
+        // Separamos el ROL del TEXTO (formato ROLE:XXX||Texto...)
+        String[] parts = rawInfo.split("\\|\\|");
+        String rol = parts[0]; // ROLE:ADMIN o ROLE:PLAYER
+        String textoLobby = parts[1];
 
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
-        message.setText(infoParty);
+        message.setText(textoLobby);
         message.setParseMode("Markdown");
 
-        // 2. Creamos los botones
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
 
-        // FILA 1: Botón de Ayuda para Agregar y Botón de Actualizar
-        List<InlineKeyboardButton> row1 = new ArrayList<>();
+        if (rol.equals("ROLE:ADMIN")) {
+            // --- BOTONES PARA EL ADMIN ---
+            List<InlineKeyboardButton> row1 = new ArrayList<>();
+            var btnAdd = new InlineKeyboardButton();
+            btnAdd.setText("➕ Agregar");
+            btnAdd.setCallbackData("LOBBY:ADD_INFO");
 
-        var btnAdd = new InlineKeyboardButton();
-        btnAdd.setText("➕ Agregar Jugador");
-        btnAdd.setCallbackData("LOBBY:ADD_INFO"); // Muestra cómo agregar
+            var btnRefresh = new InlineKeyboardButton();
+            btnRefresh.setText("🔄 Actualizar");
+            btnRefresh.setCallbackData("LOBBY:REFRESH");
 
-        var btnRefresh = new InlineKeyboardButton();
-        btnRefresh.setText("🔄 Actualizar Lista");
-        btnRefresh.setCallbackData("LOBBY:REFRESH"); // Recarga la lista
+            row1.add(btnAdd);
+            row1.add(btnRefresh);
+            rows.add(row1);
 
-        row1.add(btnAdd);
-        row1.add(btnRefresh);
-        rows.add(row1);
+            List<InlineKeyboardButton> row2 = new ArrayList<>();
+            var btnStart = new InlineKeyboardButton();
+            btnStart.setText("🚀 COMENZAR");
+            btnStart.setCallbackData("LOBBY:START_MENU");
+            row2.add(btnStart);
+            rows.add(row2);
 
-        // FILA 2: Botón GRANDE de COMENZAR
-        List<InlineKeyboardButton> row2 = new ArrayList<>();
-        var btnStart = new InlineKeyboardButton();
-        btnStart.setText("🚀 COMENZAR PARTIDA");
-        btnStart.setCallbackData("LOBBY:START_MENU");
-        row2.add(btnStart);
-        rows.add(row2);
+            // BOTÓN DE ELIMINAR PARTY
+            List<InlineKeyboardButton> row3 = new ArrayList<>();
+            var btnDelete = new InlineKeyboardButton();
+            btnDelete.setText("❌ ELIMINAR PARTY");
+            btnDelete.setCallbackData("LOBBY:DELETE_PARTY");
+            row3.add(btnDelete);
+            rows.add(row3);
+
+        } else {
+            // --- BOTONES PARA JUGADOR NORMAL ---
+            List<InlineKeyboardButton> row1 = new ArrayList<>();
+            var btnRefresh = new InlineKeyboardButton();
+            btnRefresh.setText("🔄 Actualizar Vista");
+            btnRefresh.setCallbackData("LOBBY:REFRESH"); // Los jugadores también pueden refrescar
+            row1.add(btnRefresh);
+            rows.add(row1);
+
+            // BOTÓN DE SALIR
+            List<InlineKeyboardButton> row2 = new ArrayList<>();
+            var btnLeave = new InlineKeyboardButton();
+            btnLeave.setText("🏃‍♂️ SALIR DE LA PARTY");
+            btnLeave.setCallbackData("LOBBY:LEAVE_PARTY");
+            row2.add(btnLeave);
+            rows.add(row2);
+        }
 
         markup.setKeyboard(rows);
         message.setReplyMarkup(markup);
@@ -576,7 +665,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 "/menu para ingresar a este menú\n"+
                 "/ID para conocer tu id\n"+
                 "/crearparty para comenzar una party y jugar con tus amigos\n"+
-                "/agregar (ID) (apodo) para agregar a tus amigos a tu party\n"+
+                "/agregar (ID) (apodo) para agregar a tus amigos a tu party\n"+"/party para ver y gestionar tu party actual.\n"+
                 "/comenzar para iniciar tu partida\n"+"\uD83E\uDD16 Y si tenes alguna otra duda, no dudes en consultarmelo que te lo voy a responder, quizá con malagana pero lo haré ok.";
 
         SendMessage message = new SendMessage();

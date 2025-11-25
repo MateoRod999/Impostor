@@ -201,7 +201,6 @@ public class GameService {
         return procesarEliminacion(adminId, nombreEliminado);
     }
 
-    // Método auxiliar necesario para el Broadcast
     public GameSession obtenerSesion(Long adminId) {
         return partidasActivas.get(adminId);
     }
@@ -230,7 +229,6 @@ public class GameService {
         return "NOT_FOUND";
     }
 
-    // 2. Método inteligente para obtener info de la party (seas Admin o Jugador)
     public String obtenerInfoPartyInteligente(Long usuarioId) {
         GameSession session = null;
 
@@ -253,6 +251,7 @@ public class GameService {
         StringBuilder sb = new StringBuilder("📋 **LOBBY DE LA PARTY**\nAdmin: " + session.getJugadores().get(session.getAdminId()) + "\n\n");
         int i = 1;
         for (String nombre : session.getJugadores().values()) {
+            String nombreLimpio = nombre.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`");
             sb.append(i++).append(". ").append(nombre).append("\n");
         }
         sb.append("\n👥 Total: ").append(session.getJugadores().size());

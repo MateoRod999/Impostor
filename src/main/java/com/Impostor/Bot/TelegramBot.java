@@ -654,6 +654,25 @@ public class TelegramBot extends TelegramLongPollingBot {
             sendMsg(adminChatId, "❌ Error: Faltan jugadores (mínimo 3) o no creaste la party.\n🔄 Utiliza el comando /menu para volver a empezar");
         }
     }
+    // --- MÉTODO PARA MANDAR EL BOTÓN DE NUEVA RONDA ---
+    private void enviarBotonNuevaRonda(Long adminId) {
+        SendMessage message = new SendMessage();
+        message.setChatId(adminId.toString());
+        message.setText("🗣️ **EL JUEGO CONTINÚA**\n\nSigan discutiendo.\nCuando estén listos para votar otra vez, toca aquí:");
+        message.setParseMode("Markdown");
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        var btn = new InlineKeyboardButton();
+        btn.setText("🗳️ INICIAR VOTACIÓN");
+        btn.setCallbackData("ADMIN:START_VOTE"); // Reutilizamos el mismo callback que ya funciona
+        rows.add(List.of(btn));
+
+        markup.setKeyboard(rows);
+        message.setReplyMarkup(markup);
+
+        try { execute(message); } catch (TelegramApiException e) { e.printStackTrace(); }
+    }
     private void sendMsg(Long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
@@ -787,25 +806,24 @@ public class TelegramBot extends TelegramLongPollingBot {
 
         if (resultadoRaw.startsWith("CONTINUAR")) {
             String eliminado = resultadoRaw.split("\\|")[1];
-            mensajeParaTodos = "💀 **" + eliminado + " fue eliminado.**\n...PERO NO ERA EL IMPOSTOR 😱\n\n¡La partida sigue! 🔪";
+            mensajeParaTodos = "💀 **" + escaparMarkdown(eliminado) + " fue eliminado.**\n...PERO NO ERA EL IMPOSTOR 😱\n\n¡La partida sigue! 🔪";
 
             // Mandamos botón al Admin para la siguiente ronda
             broadcastMensaje(adminId, mensajeParaTodos);
 
             // Le mandamos el botón de votar SOLO AL ADMIN para la prox ronda
-            enviarBotonVotacionAlAdmin(adminId);
-
+            enviarBotonNuevaRonda(adminId);
         }
         else if (resultadoRaw.startsWith("VICTORIA_AGENTES")) {
             String eliminado = resultadoRaw.split("\\|")[1];
-            mensajeParaTodos = "🎉 **¡VICTORIA DE LOS AGENTES!** 🎉\n\nEliminaron a **" + eliminado + "** y...\n😈 **¡ERA EL IMPOSTOR!** 😈";
+            mensajeParaTodos = "🎉 **¡VICTORIA DE LOS AGENTES!** 🎉\n\nEliminaron a **" + escaparMarkdown(eliminado) + "** y...\n😈 **¡ERA EL IMPOSTOR!** 😈";
             juegoTerminado = true;
             broadcastMensaje(adminId, mensajeParaTodos);
         }
         else if (resultadoRaw.startsWith("VICTORIA_IMPOSTOR")) {
             String eliminado = resultadoRaw.split("\\|")[1];
             String nombreImpostor = resultadoRaw.split("\\|")[2];
-            mensajeParaTodos = "💀 **¡VICTORIA DEL IMPOSTOR!** 💀\n\nEliminaron a " + eliminado + " (Inocente).\nQuedan pocos agentes.\n\n🤫 El Impostor era: **" + nombreImpostor + "**";
+            mensajeParaTodos = "💀 **¡VICTORIA DEL IMPOSTOR!** 💀\n\nEliminaron a " + escaparMarkdown(eliminado) + " (Inocente).\nQuedan pocos agentes.\n\n🤫 El Impostor era: **" + nombreImpostor + "**";
             juegoTerminado = true;
             broadcastMensaje(adminId, mensajeParaTodos);
         }
@@ -821,6 +839,19 @@ public class TelegramBot extends TelegramLongPollingBot {
             // Menú de gestión al Admin
             enviarMenuFinPartida(adminId, "🏁 **FIN DE LA PARTIDA**");
         }
+    }
+    private String escaparMarkdown(String texto) {
+
+        if (texto == null) return "";
+
+        return texto.replace("_", "\\_")
+
+                .replace("*", "\\*")
+
+                .replace("`", "\\`")
+
+                .replace("[", "\\[");
+
     }
     private void enviarBotonVotacionAlAdmin(Long adminId) {
         SendMessage msg = new SendMessage();
